@@ -24,6 +24,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/astaxie/beego/utils"
@@ -36,26 +37,31 @@ import (
 )
 
 func init() {
-	{{.globalinfo}}
+{{.globalinfo}}
 }
 `
 
 var (
-	lastupdateFilename string = "lastupdate.tmp"
+	lastupdateFilename = "lastupdate.tmp"
+	commentFilename    string
 	pkgLastupdate      map[string]int64
 	genInfoList        map[string][]ControllerComments
 )
 
+const coomentPrefix = "commentsRouter_"
+
 func init() {
 	pkgLastupdate = make(map[string]int64)
-	genInfoList = make(map[string][]ControllerComments)
 }
 
 func parserPkg(pkgRealpath, pkgpath string) error {
+	rep := strings.NewReplacer("/", "_", ".", "_")
+	commentFilename = coomentPrefix + rep.Replace(pkgpath) + ".go"
 	if !compareFile(pkgRealpath) {
-		Info(pkgRealpath + " don't has updated")
+		Info(pkgRealpath + " has not changed, not reloading")
 		return nil
 	}
+	genInfoList = make(map[string][]ControllerComments)
 	fileSet := token.NewFileSet()
 	astPkgs, err := parser.ParseDir(fileSet, pkgRealpath, func(info os.FileInfo) bool {
 		name := info.Name()
@@ -71,7 +77,10 @@ func parserPkg(pkgRealpath, pkgpath string) error {
 				switch specDecl := d.(type) {
 				case *ast.FuncDecl:
 					if specDecl.Recv != nil {
-						parserComments(specDecl.Doc, specDecl.Name.String(), fmt.Sprint(specDecl.Recv.List[0].Type.(*ast.StarExpr).X), pkgpath)
+						exp, ok := specDecl.Recv.List[0].Type.(*ast.StarExpr) // Check that the type is correct first beforing throwing to parser
+						if ok {
+							parserComments(specDecl.Doc, specDecl.Name.String(), fmt.Sprint(exp.X), pkgpath)
+						}
 					}
 				}
 			}
@@ -121,10 +130,18 @@ func parserComments(comments *ast.CommentGroup, funcName, controllerName, pkgpat
 }
 
 func genRouterCode() {
-	os.Mkdir(path.Join(workPath, "routers"), 0755)
+	os.Mkdir("routers", 0755)
 	Info("generate router from comments")
-	var globalinfo string
-	for k, cList := range genInfoList {
+	var (
+		globalinfo string
+		sortKey    []string
+	)
+	for k := range genInfoList {
+		sortKey = append(sortKey, k)
+	}
+	sort.Strings(sortKey)
+	for _, k := range sortKey {
+		cList := genInfoList[k]
 		for _, c := range cList {
 			allmethod := "nil"
 			if len(c.AllowHTTPMethods) > 0 {
@@ -148,14 +165,14 @@ func genRouterCode() {
 	beego.GlobalControllerRouter["` + k + `"] = append(beego.GlobalControllerRouter["` + k + `"],
 		beego.ControllerComments{
 			"` + strings.TrimSpace(c.Method) + `",
-			"` + c.Router + `",
+			` + "`" + c.Router + "`" + `,
 			` + allmethod + `,
 			` + params + `})
 `
 		}
 	}
 	if globalinfo != "" {
-		f, err := os.Create(path.Join(workPath, "routers", "commentsRouter.go"))
+		f, err := os.Create(path.Join("routers", commentFilename))
 		if err != nil {
 			panic(err)
 		}
@@ -165,11 +182,11 @@ func genRouterCode() {
 }
 
 func compareFile(pkgRealpath string) bool {
-	if !utils.FileExists(path.Join(workPath, "routers", "commentsRouter.go")) {
+	if !utils.FileExists(path.Join("routers", commentFilename)) {
 		return true
 	}
-	if utils.FileExists(path.Join(workPath, lastupdateFilename)) {
-		content, err := ioutil.ReadFile(path.Join(workPath, lastupdateFilename))
+	if utils.FileExists(lastupdateFilename) {
+		content, err := ioutil.ReadFile(lastupdateFilename)
 		if err != nil {
 			return true
 		}
@@ -197,7 +214,7 @@ func savetoFile(pkgRealpath string) {
 	if err != nil {
 		return
 	}
-	ioutil.WriteFile(path.Join(workPath, lastupdateFilename), d, os.ModePerm)
+	ioutil.WriteFile(lastupdateFilename, d, os.ModePerm)
 }
 
 func getpathTime(pkgRealpath string) (lastupdate int64, err error) {

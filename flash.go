@@ -32,6 +32,24 @@ func NewFlash() *FlashData {
 	}
 }
 
+// Set message to flash
+func (fd *FlashData) Set(key string, msg string, args ...interface{}) {
+	if len(args) == 0 {
+		fd.Data[key] = msg
+	} else {
+		fd.Data[key] = fmt.Sprintf(msg, args...)
+	}
+}
+
+// Success writes success message to flash.
+func (fd *FlashData) Success(msg string, args ...interface{}) {
+	if len(args) == 0 {
+		fd.Data["success"] = msg
+	} else {
+		fd.Data["success"] = fmt.Sprintf(msg, args...)
+	}
+}
+
 // Notice writes notice message to flash.
 func (fd *FlashData) Notice(msg string, args ...interface{}) {
 	if len(args) == 0 {
@@ -65,27 +83,27 @@ func (fd *FlashData) Store(c *Controller) {
 	c.Data["flash"] = fd.Data
 	var flashValue string
 	for key, value := range fd.Data {
-		flashValue += "\x00" + key + "\x23" + FlashSeperator + "\x23" + value + "\x00"
+		flashValue += "\x00" + key + "\x23" + BConfig.WebConfig.FlashSeparator + "\x23" + value + "\x00"
 	}
-	c.Ctx.SetCookie(FlashName, url.QueryEscape(flashValue), 0, "/")
+	c.Ctx.SetCookie(BConfig.WebConfig.FlashName, url.QueryEscape(flashValue), 0, "/")
 }
 
 // ReadFromRequest parsed flash data from encoded values in cookie.
 func ReadFromRequest(c *Controller) *FlashData {
 	flash := NewFlash()
-	if cookie, err := c.Ctx.Request.Cookie(FlashName); err == nil {
+	if cookie, err := c.Ctx.Request.Cookie(BConfig.WebConfig.FlashName); err == nil {
 		v, _ := url.QueryUnescape(cookie.Value)
 		vals := strings.Split(v, "\x00")
 		for _, v := range vals {
 			if len(v) > 0 {
-				kv := strings.Split(v, "\x23"+FlashSeperator+"\x23")
+				kv := strings.Split(v, "\x23"+BConfig.WebConfig.FlashSeparator+"\x23")
 				if len(kv) == 2 {
 					flash.Data[kv[0]] = kv[1]
 				}
 			}
 		}
 		//read one time then delete it
-		c.Ctx.SetCookie(FlashName, "", -1, "/")
+		c.Ctx.SetCookie(BConfig.WebConfig.FlashName, "", -1, "/")
 	}
 	c.Data["flash"] = flash.Data
 	return flash

@@ -21,9 +21,9 @@ import (
 	"net"
 )
 
-// ConnWriter implements LoggerInterface.
+// connWriter implements LoggerInterface.
 // it writes messages in keep-live tcp connection.
-type ConnWriter struct {
+type connWriter struct {
 	lg             *log.Logger
 	innerWriter    io.WriteCloser
 	ReconnectOnMsg bool   `json:"reconnectOnMsg"`
@@ -33,26 +33,22 @@ type ConnWriter struct {
 	Level          int    `json:"level"`
 }
 
-// create new ConnWrite returning as LoggerInterface.
-func NewConn() LoggerInterface {
-	conn := new(ConnWriter)
+// NewConn create new ConnWrite returning as LoggerInterface.
+func NewConn() Logger {
+	conn := new(connWriter)
 	conn.Level = LevelTrace
 	return conn
 }
 
-// init connection writer with json config.
+// Init init connection writer with json config.
 // json config only need key "level".
-func (c *ConnWriter) Init(jsonconfig string) error {
-	err := json.Unmarshal([]byte(jsonconfig), c)
-	if err != nil {
-		return err
-	}
-	return nil
+func (c *connWriter) Init(jsonconfig string) error {
+	return json.Unmarshal([]byte(jsonconfig), c)
 }
 
-// write message in connection.
+// WriteMsg write message in connection.
 // if connection is down, try to re-connect.
-func (c *ConnWriter) WriteMsg(msg string, level int) error {
+func (c *connWriter) WriteMsg(msg string, level int) error {
 	if level > c.Level {
 		return nil
 	}
@@ -70,20 +66,19 @@ func (c *ConnWriter) WriteMsg(msg string, level int) error {
 	return nil
 }
 
-// implementing method. empty.
-func (c *ConnWriter) Flush() {
+// Flush implementing method. empty.
+func (c *connWriter) Flush() {
 
 }
 
-// destroy connection writer and close tcp listener.
-func (c *ConnWriter) Destroy() {
-	if c.innerWriter == nil {
-		return
+// Destroy destroy connection writer and close tcp listener.
+func (c *connWriter) Destroy() {
+	if c.innerWriter != nil {
+		c.innerWriter.Close()
 	}
-	c.innerWriter.Close()
 }
 
-func (c *ConnWriter) connect() error {
+func (c *connWriter) connect() error {
 	if c.innerWriter != nil {
 		c.innerWriter.Close()
 		c.innerWriter = nil
@@ -103,7 +98,7 @@ func (c *ConnWriter) connect() error {
 	return nil
 }
 
-func (c *ConnWriter) neddedConnectOnMsg() bool {
+func (c *connWriter) neddedConnectOnMsg() bool {
 	if c.Reconnect {
 		c.Reconnect = false
 		return true

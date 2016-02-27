@@ -29,7 +29,10 @@ func TestCookie(t *testing.T) {
 	}
 	r, _ := http.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
-	sess := globalSessions.SessionStart(w, r)
+	sess, err := globalSessions.SessionStart(w, r)
+	if err != nil {
+		t.Fatal("set error,", err)
+	}
 	err = sess.Set("username", "astaxie")
 	if err != nil {
 		t.Fatal("set error,", err)
@@ -48,5 +51,46 @@ func TestCookie(t *testing.T) {
 				t.Fatal("error")
 			}
 		}
+	}
+}
+
+func TestDestorySessionCookie(t *testing.T) {
+	config := `{"cookieName":"gosessionid","enableSetCookie":true,"gclifetime":3600,"ProviderConfig":"{\"cookieName\":\"gosessionid\",\"securityKey\":\"beegocookiehashkey\"}"}`
+	globalSessions, err := NewManager("cookie", config)
+	if err != nil {
+		t.Fatal("init cookie session err", err)
+	}
+
+	r, _ := http.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	session, err := globalSessions.SessionStart(w, r)
+	if err != nil {
+		t.Fatal("session start err,", err)
+	}
+
+	// request again ,will get same sesssion id .
+	r1, _ := http.NewRequest("GET", "/", nil)
+	r1.Header.Set("Cookie", w.Header().Get("Set-Cookie"))
+	w = httptest.NewRecorder()
+	newSession, err := globalSessions.SessionStart(w, r1)
+	if err != nil {
+		t.Fatal("session start err,", err)
+	}
+	if newSession.SessionID() != session.SessionID() {
+		t.Fatal("get cookie session id is not the same again.")
+	}
+
+	// After destroy session , will get a new session id .
+	globalSessions.SessionDestroy(w, r1)
+	r2, _ := http.NewRequest("GET", "/", nil)
+	r2.Header.Set("Cookie", w.Header().Get("Set-Cookie"))
+
+	w = httptest.NewRecorder()
+	newSession, err = globalSessions.SessionStart(w, r2)
+	if err != nil {
+		t.Fatal("session start error")
+	}
+	if newSession.SessionID() == session.SessionID() {
+		t.Fatal("after destroy session and reqeust again ,get cookie session id is same.")
 	}
 }
